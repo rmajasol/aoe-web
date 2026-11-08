@@ -43,6 +43,7 @@
       <button data-d="hard">Difícil</button>
     </div>
     <button id="start">Comenzar partida</button>
+    <div id="logbar"><button id="btn-log"></button></div>
     <div class="help">
       <b>Controles</b>
       <ul>
@@ -58,6 +59,20 @@
   </div>
 </div>
 
+<div id="logview" class="hidden">
+  <div class="card">
+    <h2>📜 Registro de partidas</h2>
+    <select id="log-sel"></select>
+    <textarea id="log-text" readonly spellcheck="false"></textarea>
+    <div class="logbtns">
+      <button id="log-copy">Copiar</button>
+      <button id="log-dl">Descargar .txt</button>
+      <button id="log-clear">Borrar anteriores</button>
+      <button id="log-close">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div id="end" class="hidden">
   <div class="card">
     <h1 id="end-title"></h1>
@@ -66,6 +81,7 @@
   </div>
 </div>
 
+<script src="js/log.js"></script>
 <script src="js/data.js"></script>
 <script src="js/game.js"></script>
 <script src="js/ai.js"></script>

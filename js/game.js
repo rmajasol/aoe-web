@@ -178,6 +178,7 @@ function killEntity(e) {
     for (let i = 0; i < 5; i++) chip(e.x, e.y, 18, i % 2 ? '#8a1a14' : '#b82a20', 'drop');
   } else if (e.kind === 'building') {
     occupy(e, 0);
+    LOG.event('edificio destruido', { owner: e.owner, type: e.type, x: e.x, y: e.y });
     const p = G.players[e.owner];
     for (const q of e.queue) p.pop -= UNITS[q.type].pop || 1;
     if (e.research) p.researching = null;
@@ -211,7 +212,7 @@ function checkEnd() {
   if (G.over) return;
   const mine = G.buildings.some(b => b.owner === 0 && !b.dead);
   const theirs = G.buildings.some(b => b.owner === 1 && !b.dead);
-  if (!mine || !theirs) { G.over = true; showEnd(theirs); }
+  if (!mine || !theirs) { G.over = true; LOG.event(theirs ? 'VICTORIA' : 'DERROTA'); LOG.snap('fin de partida'); showEnd(theirs); }
 }
 function evict(b) {
   for (const u of G.units) {
@@ -327,6 +328,7 @@ function placeBuilding(owner, type, tx, ty) {
   const D = BUILDINGS[type];
   pay(G.players[owner], D.cost);
   const b = addBuilding(owner, type, tx, ty, false);
+  LOG.event('construcción iniciada', { owner, type, x: tx, y: ty });
   evict(b);
   return b;
 }
@@ -337,6 +339,7 @@ function enqueue(b, type) {
   const pop = D.pop || 1;
   if (p.pop + pop > p.popCap) { if (b.owner === 0) notify('Necesitas más casas.', 'warn'); return false; }
   pay(p, D.cost); p.pop += pop; b.queue.push({ type });
+  if (b.owner === 0) LOG.event('entrenar', { type, en: b.type });
   return true;
 }
 function cancelQueue(b, i) {
@@ -348,7 +351,7 @@ function startResearch(b) {
   const p = G.players[b.owner];
   if (b.type !== 'tc' || !b.done || p.age >= 3 || p.researching) return false;
   const c = AGE_COST[p.age + 1]; if (!canAfford(p, c)) return false;
-  pay(p, c); b.research = { t: 0, total: AGE_TIME[p.age + 1] }; p.researching = b; return true;
+  pay(p, c); b.research = { t: 0, total: AGE_TIME[p.age + 1] }; p.researching = b; LOG.event('investigación de edad', { owner: b.owner, edad: p.age + 1 }); return true;
 }
 function exitTile(b) {
   const D = BUILDINGS[b.type], target = b.rally ? (b.rally.node ? center(b.rally.node) : b.rally) : { x: b.x + b.w / 2, y: b.y + b.h + 3 };
@@ -363,6 +366,7 @@ function exitTile(b) {
 }
 function finishBuilding(b) {
   b.done = true; b.progress = 1; b.hp = b.maxhp; recalcPop(b.owner);
+  LOG.event('edificio completado', { owner: b.owner, type: b.type });
   G.fx.push({ type: 'done', x: b.x + b.w / 2, y: b.y + b.h / 2, r: b.w, t: 0, dur: 1.4 });
   if (b.owner === 0) { notify(BUILDINGS[b.type].name + ' completado.', 'ok'); sfx('build'); }
 }
@@ -483,7 +487,7 @@ function calcDmg(att, t) {
 }
 function alertAttack(t) {
   if (G.t - G.lastAlert > 10) {
-    G.lastAlert = G.t; notify('¡Te están atacando!', 'danger'); sfx('alert');
+    G.lastAlert = G.t; LOG.event('bajo ataque'); notify('¡Te están atacando!', 'danger'); sfx('alert');
     const c = center(t); G.fx.push({ type: 'ping', x: c.x, y: c.y, t: 0, dur: 3 });
   }
 }
@@ -851,6 +855,7 @@ function updateBuilding(b, dt) {
     b.research.t += dt;
     if (b.research.t >= b.research.total) {
       b.research = null; p.researching = null; p.age++;
+      LOG.event('avance de edad', { owner: b.owner, edad: p.age });
       if (b.owner === 0) { notify('¡Avanzaste a la ' + AGES[p.age] + '!', 'ok'); sfx('age'); }
       else notify('El enemigo avanzó a la ' + AGES[p.age] + '.', 'warn');
     }
@@ -909,6 +914,7 @@ function update(dt) {
 function startGame(diffKey) {
   let seed = Math.floor(Math.random() * 1e9);
   while (!genMap(seed)) seed++;
+  G.seed = seed;
   G.t = 0; G.over = false; G.paused = false; G.speed = 1; G.lastAlert = -99;
   G.players = [0, 1].map(i => ({
     id: i, name: i ? 'Enemigo' : 'Jugador', res: { food: 200, wood: 200, gold: 100, stone: 100 },

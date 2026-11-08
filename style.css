@@ -7,6 +7,19 @@
 html,body{width:100%;height:100%;overflow:hidden;background:#0a0c10;font-family:"Segoe UI",system-ui,sans-serif;color:var(--txt);user-select:none}
 canvas#game{position:fixed;inset:0;display:block}
 .hidden{display:none!important}
+#logbar{margin-top:14px}
+#btn-log{background:none;border:1px solid #6b5224;color:#d9c08a;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px}
+#btn-log:hover{border-color:#ffd96b;color:#fff}
+#btn-log.crash{border-color:#ff6b5d;color:#ffb0a8;animation:logpulse 1.4s ease-in-out infinite}
+@keyframes logpulse{50%{box-shadow:0 0 12px rgba(255,107,93,.6)}}
+#logview{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75)}
+#logview .card{width:min(900px,94vw);padding:20px 24px;text-align:left}
+#logview h2{font-family:var(--title);color:#ffd96b;margin-bottom:10px}
+#log-sel{width:100%;margin-bottom:8px;padding:6px;background:#1e150a;color:var(--txt);border:1px solid #6b5224;border-radius:5px}
+#log-text{width:100%;height:55vh;background:#120d06;color:#d8cdb4;border:1px solid #6b5224;border-radius:5px;padding:8px;font:12px/1.4 Consolas,monospace;resize:none;white-space:pre}
+.logbtns{display:flex;gap:8px;margin-top:10px;justify-content:flex-end}
+.logbtns button{background:linear-gradient(#5d4624,#3a2a14);color:var(--txt);border:1px solid var(--gold-lo);border-radius:5px;padding:6px 14px;cursor:pointer}
+.logbtns button:hover{filter:brightness(1.25)}
 button{font-family:inherit}
 
 /* ---------- Barra superior ---------- */

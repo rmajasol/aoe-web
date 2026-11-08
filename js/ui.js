@@ -354,7 +354,7 @@ function initInput() {
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
     if (k === 'escape') { buildType = null; amoveMode = false; return; }
     if (k === 'delete') { deleteSel(); return; }
-    if (k === 'p') { G.paused = !G.paused; notify(G.paused ? 'Pausa' : 'Reanudado'); return; }
+    if (k === 'p') { G.paused = !G.paused; LOG.event(G.paused ? 'pausa' : 'reanudar'); notify(G.paused ? 'Pausa' : 'Reanudado'); return; }
     if (k === '+' || k === '=') { G.speed = Math.min(4, G.speed + 1); return; }
     if (k === '-') { G.speed = Math.max(1, G.speed - 1); return; }
     if (k === 'h') { const tc = G.buildings.find(b => b.owner === 0 && b.type === 'tc' && !b.dead); if (tc) centerCam(tc.x + 2, tc.y + 2); return; }

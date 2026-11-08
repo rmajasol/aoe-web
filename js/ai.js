@@ -128,6 +128,7 @@ function aiUpdate(p, dt) {
         a.attacking = true; a.wave++;
         const tgt = nearestTo(enemyBuildings, home);
         issueMove(army, tgt.x + tgt.w / 2, tgt.y + tgt.h / 2, true);
+        LOG.event('IA lanza oleada', { oleada: a.wave, tamaño: waveSize });
         notify('¡El enemigo lanza un ataque!', 'danger'); sfx('alert');
       } else {
         const en = enemyBuildings[0] ? center(enemyBuildings[0]) : home;
