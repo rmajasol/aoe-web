@@ -45,6 +45,7 @@ const fmtTime = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padSt
 
 /* ---------- Selección ---------- */
 function unitScr(u) { return { x: (isoX(u.x, u.y) - cam.x) * cam.zoom, y: (isoY(u.x, u.y) - cam.y) * cam.zoom - 15 * cam.zoom }; }
+function bldScr(b) { return { x: (isoX(b.x + b.w / 2, b.y + b.h / 2) - cam.x) * cam.zoom, y: (isoY(b.x + b.w / 2, b.y + b.h / 2) - cam.y) * cam.zoom }; }
 function inDiamond(px, py, cx, cy, hw, hh) { return Math.abs(px - cx) / hw + Math.abs(py - cy) / hh <= 1; }
 function buildingHit(b, wx, wy) {
   const [H, RH] = BH[b.type], top = b.type === 'tower' ? 66 : H + RH * .6, cx = isoX(b.x + b.w / 2, b.y + b.h / 2), cy = isoY(b.x + b.w / 2, b.y + b.h / 2);
@@ -87,13 +88,19 @@ function selectOnScreenSame(type) {
 function mouseUp(e) {
   if (!dragBox) return;
   const db = dragBox; dragBox = null;
-  const shift = e.shiftKey;
+  const shift = e.shiftKey || e.ctrlKey || e.metaKey;
   if (Math.abs(db.x1 - db.x0) < 5 && Math.abs(db.y1 - db.y0) < 5) {
     const t = pick(db.x1, db.y1);
     if (!t) { if (!shift) setSel([]); return; }
     const now = performance.now();
     if (t.kind === 'unit' && t.owner === 0 && lastClick.type === t.type && now - lastClick.t < 400) { setSel(selectOnScreenSame(t.type)); lastClick = { t: 0, type: null }; return; }
-    lastClick = { t: now, type: t.kind === 'unit' && t.owner === 0 ? t.type : null };
+    if (t.kind === 'building' && t.owner === 0 && lastClick.type === 'b:' + t.type && now - lastClick.t < 400) {
+      setSel(G.buildings.filter(b => { if (b.dead || b.owner !== 0 || b.type !== t.type) return false; const p = bldScr(b); return p.x >= 0 && p.x <= VW && p.y >= 0 && p.y <= VH; })); lastClick = { t: 0, type: null }; return;
+    }
+    lastClick = { t: now, type: t.owner === 0 ? (t.kind === 'unit' ? t.type : t.kind === 'building' ? 'b:' + t.type : null) : null };
+    if (shift && t.kind === 'building' && t.owner === 0 && sel.length && sel[0].kind === 'building' && sel[0].owner === 0) {
+      setSel(selSet.has(t.id) ? sel.filter(s => s !== t) : sel.concat(t));
+    } else
     if (shift && t.kind === 'unit' && t.owner === 0 && sel.length && sel[0].kind === 'unit' && sel[0].owner === 0) {
       setSel(selSet.has(t.id) ? sel.filter(s => s !== t) : sel.concat(t));
     } else setSel([t]);
@@ -101,7 +108,11 @@ function mouseUp(e) {
     const x0 = Math.min(db.x0, db.x1), x1 = Math.max(db.x0, db.x1), y0 = Math.min(db.y0, db.y1), y1 = Math.max(db.y0, db.y1);
     const found = G.units.filter(u => { if (u.dead || u.owner !== 0) return false; const p = unitScr(u); return p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1; });
     if (found.length) setSel(shift && sel.length && sel[0].kind === 'unit' && sel[0].owner === 0 ? sel.concat(found.filter(f => !selSet.has(f.id))) : found);
-    else if (!shift) setSel([]);
+    else {
+      const bs = G.buildings.filter(b => { if (b.dead || b.owner !== 0) return false; const p = bldScr(b); return p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1; });
+      if (bs.length) setSel(shift && sel.length && sel[0].kind === 'building' && sel[0].owner === 0 ? sel.concat(bs.filter(f => !selSet.has(f.id))) : bs);
+      else if (!shift) setSel([]);
+    }
   }
 }
 
@@ -169,18 +180,28 @@ function getCommands() {
     out.push({ id: 'del', icon: '🗑️', name: 'Eliminar', desc: 'Elimina las unidades seleccionadas.', ok: () => '', run: deleteSel });
   } else if (f.kind === 'building') {
     const D = BUILDINGS[f.type];
-    if (f.done) {
-      for (const t of D.trains || []) {
-        const U = UNITS[t];
+    const blds = sel.filter(b => b.kind === 'building' && b.owner === 0 && b.done);
+    const multi = sel.length > 1;
+    if (blds.length) {
+      const types = [];
+      for (const b of blds) for (const t of BUILDINGS[b.type].trains || []) if (!types.includes(t)) types.push(t);
+      for (const t of types) {
+        const U = UNITS[t], pop = U.pop || 1;
+        const can = () => blds.filter(b => BUILDINGS[b.type].trains.includes(t));
         out.push({
-          id: 't' + t, icon: U.icon, name: U.name, cost: U.cost, desc: U.desc + ' (' + U.time + 's)' + (U.age > p.age ? ' Requiere ' + AGES[U.age] : ''), kind: 'train',
-          ok: () => U.age > p.age ? 'Requiere ' + AGES[U.age] : !canAfford(p, U.cost) ? 'Recursos insuficientes' : p.pop + (U.pop || 1) > p.popCap ? 'Necesitas más casas' : f.queue.length >= 6 ? 'Cola llena' : '',
-          run: () => { const n = sel.filter(b => b.kind === 'building' && b.done && BUILDINGS[b.type].trains && BUILDINGS[b.type].trains.includes(t)); const tgt = n.reduce((a, b) => (!a || b.queue.length < a.queue.length ? b : a), null); if (tgt) enqueue(tgt, t); },
+          id: 't' + t, icon: U.icon, name: U.name, cost: U.cost, desc: U.desc + ' (' + U.time + 's)' + (U.age > p.age ? ' Requiere ' + AGES[U.age] : '') + (multi ? ' · Entrena una en cada edificio seleccionado que pueda.' : ''), kind: 'train',
+          ok: () => U.age > p.age ? 'Requiere ' + AGES[U.age] : !canAfford(p, U.cost) ? 'Recursos insuficientes' : p.pop + pop > p.popCap ? 'Necesitas más casas' : can().every(b => b.queue.length >= 6) ? 'Cola llena' : '',
+          run: () => {
+            let n = 0;
+            for (const b of can()) { if (b.queue.length >= 6 || p.pop + pop > p.popCap || !canAfford(p, U.cost)) continue; if (enqueue(b, t) !== false) n++; }
+            if (multi && n && n < can().length) notify('Solo se pudieron entrenar ' + n + ' de ' + can().length + ' (recursos, población o cola).', 'warn');
+          },
         });
       }
-      if (f.type === 'tc' && p.age < 3) {
+      const tc = blds.find(b => b.type === 'tc');
+      if (tc && p.age < 3) {
         const c = AGE_COST[p.age + 1];
-        out.push({ id: 'age', icon: '👑', name: 'Avanzar a ' + AGES[p.age + 1], cost: c, desc: 'Desbloquea nuevas unidades y edificios, y mejora tus unidades.', ok: () => p.researching ? 'Ya investigando' : !canAfford(p, c) ? 'Recursos insuficientes' : '', run: () => startResearch(f) });
+        out.push({ id: 'age', icon: '👑', name: 'Avanzar a ' + AGES[p.age + 1], cost: c, desc: 'Desbloquea nuevas unidades y edificios, y mejora tus unidades.', ok: () => p.researching ? 'Ya investigando' : !canAfford(p, c) ? 'Recursos insuficientes' : '', run: () => startResearch(tc) });
       }
     }
     out.push({ id: 'del', icon: '🗑️', name: f.done ? 'Derribar' : 'Cancelar', desc: 'Destruye el edificio.', ok: () => '', run: deleteSel });
