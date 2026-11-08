@@ -586,6 +586,15 @@ function issueAttack(list, t) {
   }
 }
 function nodeRes(n) { return n.kind === 'building' ? 'food' : n.res; }
+function nearbyNode(x, y, type, maxD) {
+  let best = null, bd = maxD;
+  for (const n of G.nodes) {
+    if (!alive(n) || (type && n.type !== type)) continue;
+    const d = Math.hypot(n.x + .5 - x, n.y + .5 - y);
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
 function issueGather(list, n) {
   const move = [];
   for (const u of list) {
@@ -824,8 +833,16 @@ function updateBuilding(b, dt) {
       b.qt = 0; b.queue.shift();
       const e = exitTile(b), u = addUnit(b.owner, q.type, e.x, e.y, false);
       if (b.rally) {
-        if (b.rally.node && alive(b.rally.node) && u.type === 'villager') issueGather([u], b.rally.node);
-        else issueMove([u], b.rally.x != null ? b.rally.x : b.rally.node.x + .5, b.rally.y != null ? b.rally.y : b.rally.node.y + .5);
+        const r = b.rally;
+        // Recuerda posición y tipo del recurso para poder sustituirlo si se agota
+        if (r.node && r.px == null) { r.px = r.node.x; r.py = r.node.y; r.rtype = r.node.type; }
+        let node = r.node && alive(r.node) ? r.node : null;
+        if (u.type === 'villager') {
+          // Recurso agotado, o punto de reunión en el suelo junto a un recurso: busca el más cercano
+          if (!node) node = nearbyNode(r.px != null ? r.px : r.x, r.py != null ? r.py : r.y, r.rtype, r.rtype ? 10 : 1.8);
+        }
+        if (node && u.type === 'villager') issueGather([u], node);
+        else issueMove([u], r.x != null ? r.x : r.px + .5, r.y != null ? r.y : r.py + .5);
       }
       if (b.owner === 0) sfx('train');
     }
