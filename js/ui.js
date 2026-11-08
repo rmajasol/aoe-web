@@ -33,7 +33,7 @@ function notify(msg, kind) {
   const box = $('alert'), d = document.createElement('div');
   d.className = 'msg ' + (kind || ''); d.textContent = msg; box.appendChild(d);
   while (box.children.length > 5) box.removeChild(box.firstChild);
-  setTimeout(() => d.remove(), 5000);
+  setTimeout(() => d.classList.add('out'), 4500); setTimeout(() => d.remove(), 5000);
 }
 function showEnd(victory) {
   $('end').classList.remove('hidden');
@@ -282,8 +282,13 @@ function refreshInfo(force) {
 }
 function updateTop() {
   const p = G.players[0];
-  $('r-food').textContent = Math.floor(p.res.food); $('r-wood').textContent = Math.floor(p.res.wood);
-  $('r-gold').textContent = Math.floor(p.res.gold); $('r-stone').textContent = Math.floor(p.res.stone);
+  for (const k of ['food', 'wood', 'gold', 'stone']) {
+    const v = Math.floor(p.res[k]), el = $('r-' + k), prev = +el.textContent;
+    if (v !== prev) {
+      el.textContent = v; const box = el.parentElement, cls = v > prev ? 'up' : 'down';
+      if (Math.abs(v - prev) >= 5) { box.classList.remove('up', 'down'); void box.offsetWidth; box.classList.add(cls); }
+    }
+  }
   const pop = $('r-pop'); pop.textContent = p.pop + '/' + p.popCap; pop.parentElement.classList.toggle('warn', p.pop >= p.popCap);
   $('age').textContent = AGES[p.age] + (p.researching ? ' ⏳' : '');
   $('clock').textContent = fmtTime(G.t); $('btn-speed').textContent = '⏩ x' + G.speed;

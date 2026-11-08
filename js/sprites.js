@@ -514,10 +514,11 @@ function buildSprites() {
 
 /* ---------- Barras y banderas ---------- */
 function hpBar(x, y, w, frac) {
-  ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(x - 1.5, y - 1.5, w + 3, 7);
+  ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - 1.5, y - 1.5, w + 3, 7, 2.5) : ctx.rect(x - 1.5, y - 1.5, w + 3, 7); ctx.fill();
   const c = frac > .5 ? ['#8dff8d', '#2fae3a'] : frac > .25 ? ['#ffe55a', '#c9a010'] : ['#ff7a6a', '#b52a1c'];
   const g = ctx.createLinearGradient(0, y, 0, y + 4); g.addColorStop(0, c[0]); g.addColorStop(1, c[1]);
   ctx.fillStyle = g; ctx.fillRect(x, y, w * Math.max(0, frac), 4); ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(x, y, w * Math.max(0, frac), 1.2);
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; for (let t = 1; t < 4; t++) ctx.fillRect(x + w * t / 4 - .4, y, .8, 4);
 }
 function flag(x, y, h, col, t) {
   ctx.strokeStyle = '#3a2a18'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - h); ctx.stroke();
@@ -532,7 +533,7 @@ const UNIT_H = { villager: 42, swordsman: 44, spearman: 46, archer: 44, knight: 
 function drawNode(n) {
   if (n.type === 'carcass') { drawCarcass(n); if (n.sel) { const cx = isoX(n.fx, n.fy), cy = isoY(n.fx, n.fy); ctx.strokeStyle = '#ffe97a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(cx, cy, 20, 10, 0, 0, 7); ctx.stroke(); } return; }
   const sx = isoX(n.x + .5, n.y + .5), sy = isoY(n.x + .5, n.y + .5), sh = n.shake > 0 ? n.shake : 0;
-  if (n.type === 'tree') { const s = SPR.tree[n.v]; ctx.save(); ctx.translate(sx, sy + 3); ctx.rotate(Math.sin(G.t * 46) * sh * .16); ctx.drawImage(s, -28, -64, s.lw, s.lh); ctx.restore(); }
+  if (n.type === 'tree') { const s = SPR.tree[n.v]; ctx.save(); ctx.translate(sx, sy + 3); ctx.rotate(Math.sin(G.t * 46) * sh * .16 + Math.sin(G.t * 1.3 + n.x * .7 + n.y * .45) * .022 + Math.sin(G.t * 3.1 + n.x) * .006); ctx.drawImage(s, -28, -64, s.lw, s.lh); ctx.restore(); }
   else {
     const k = (n.type === 'berry' ? .95 : .7 + .3 * (n.amount / n.max)) * (n.type === 'berry' ? (.7 + .3 * (n.amount / n.max)) : 1), s = SPR[n.type];
     ctx.save(); ctx.translate(sx + Math.sin(G.t * 50) * sh * 2.5, sy + 2); ctx.scale(k * 1.15, k * 1.15); ctx.drawImage(s, -20, -32, s.lw, s.lh); ctx.restore();
@@ -542,17 +543,27 @@ function drawNode(n) {
 }
 function drawUnit(u) {
   const sx = isoX(u.x, u.y), sy = isoY(u.x, u.y), big = u.type === 'knight' ? 1.55 : u.type === 'ram' ? 1.7 : 1;
-  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sx + 3 * big, sy + 1, 11 * big, 5 * big, 0, 0, 7); ctx.fill();
+  const age = G.t - (u.born || -9), spawn = age < .55 ? age / .55 : 1;
+  if (spawn < 1) ctx.globalAlpha = spawn;
+  const sg = ctx.createRadialGradient(sx + 3 * big, sy + 1, 0, sx + 3 * big, sy + 1, 12 * big); sg.addColorStop(0, 'rgba(0,0,0,.38)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.ellipse(sx + 3 * big, sy + 1, 12 * big, 5.5 * big, 0, 0, 7); ctx.fill();
   if (u.sel) {
-    const sc = u.owner === 0 ? '93,255,114' : '255,93,93';
-    ctx.strokeStyle = `rgba(${sc},.28)`; ctx.lineWidth = 6; ctx.beginPath(); ctx.ellipse(sx, sy, 17 * big, 8.5 * big, 0, 0, 7); ctx.stroke();
+    const sc = u.owner === 0 ? '93,255,114' : '255,93,93', pu = .5 + .5 * Math.sin(G.t * 5 + u.id);
+    ctx.strokeStyle = `rgba(${sc},${.18 + .16 * pu})`; ctx.lineWidth = 5 + 3 * pu; ctx.beginPath(); ctx.ellipse(sx, sy, 17 * big, 8.5 * big, 0, 0, 7); ctx.stroke();
     ctx.strokeStyle = `rgb(${sc})`; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.ellipse(sx, sy, 17 * big, 8.5 * big, 0, 0, 7); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,255,255,.55)`; ctx.lineWidth = 1.2; ctx.setLineDash([5, 9]); ctx.lineDashOffset = -G.t * 18; ctx.beginPath(); ctx.ellipse(sx, sy, 20 * big, 10 * big, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
   }
   FG.C = Math.cos(u.dir); FG.S = Math.sin(u.dir);
   const st = unitFig(u), bob = st.moving && u.type !== 'ram' ? -Math.abs(Math.sin(st.ph)) * 1.6 : 0;
-  ctx.save(); ctx.translate(sx, sy + bob); FIGS[u.type](u, PCOL[u.owner], PDARK[u.owner], st); figFlush();
+  ctx.save(); ctx.translate(sx, sy + bob + (1 - spawn) * 8);
+  if (spawn < 1) ctx.scale(.7 + .3 * spawn, .7 + .3 * spawn);
+  // ligera inclinación hacia la dirección de la marcha y retroceso al recibir un golpe
+  const lean = st.moving && u.type !== 'ram' ? (Math.cos(u.dir) - Math.sin(u.dir)) * .045 * (u.type === 'knight' ? 1.4 : 1) : 0, hit = u.flash > 0 ? Math.sin(u.flash * 40) * u.flash * 6 : 0;
+  ctx.translate(hit, 0); ctx.rotate(lean);
+  FIGS[u.type](u, PCOL[u.owner], PDARK[u.owner], st); figFlush();
   if (u.flash > 0) { ctx.globalAlpha = Math.min(.5, u.flash * 4); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(0, -UNIT_H[u.type] * .5, 8 * big, UNIT_H[u.type] * .45, 0, 0, 7); ctx.fill(); }
   ctx.restore();
+  ctx.globalAlpha = 1;
   if (u.sel || u.hp < u.maxhp) hpBar(sx - 12, sy - UNIT_H[u.type] - 6, 24, u.hp / u.maxhp);
 }
 function drawBuilding(b) {
@@ -564,6 +575,7 @@ function drawBuilding(b) {
     diamondPath(ctx, b.x, b.y, b.w, b.h, 0); ctx.strokeStyle = `rgba(${sc},.3)`; ctx.lineWidth = 7; ctx.lineJoin = 'round'; ctx.stroke(); ctx.strokeStyle = `rgb(${sc})`; ctx.lineWidth = 2; ctx.stroke();
   }
   ctx.save();
+  if (b.flash > 0) ctx.translate(Math.sin(b.flash * 90) * b.flash * 12, 0);
   if (!b.done) { const full = topZ + P * .5 + 40, h = full * (0.12 + 0.88 * b.progress); ctx.beginPath(); ctx.rect(bx - P - 70, by + P + 10 - h, 2 * P + 140, h); ctx.clip(); }
   ctx.drawImage(sp, bx - sp.ox, by - sp.oy, sp.lw, sp.lh);
   if (b.type === 'farm') {

@@ -16,6 +16,17 @@ $('start').onclick = () => {
   notify('Recolecta recursos, construye casas y crea más aldeanos.', 'ok');
 };
 initInput(); resize();
+// brasas flotando en el menú
+(function embers() {
+  const host = ['menu', 'end'].map($).find(m => !m.classList.contains('hidden'));
+  if (host) {
+    const e = document.createElement('div'); e.className = 'ember';
+    e.style.left = Math.random() * 100 + '%'; e.style.setProperty('--dx', (Math.random() - .5) * 200 + 'px');
+    e.style.animationDuration = 5 + Math.random() * 6 + 's'; const s = 2 + Math.random() * 4; e.style.width = e.style.height = s + 'px';
+    host.appendChild(e); setTimeout(() => e.remove(), 11000);
+  }
+  setTimeout(embers, 220);
+})();
 
 function frame(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;

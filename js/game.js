@@ -157,7 +157,7 @@ function addUnit(owner, type, x, y, countPop) {
   const u = {
     id: G.nextId++, kind: 'unit', type, owner, x, y, hp: D.hp * m, maxhp: D.hp * m,
     order: null, path: null, pi: 0, dir: Math.random() * 6.28, cool: 0, carry: 0, ctype: null,
-    scan: Math.random() * 0.5, flash: 0, anim: 0, swing: 0, pathT: 0, pv: G.pv, retry: 0,
+    scan: Math.random() * 0.5, flash: 0, anim: 0, swing: 0, pathT: 0, pv: G.pv, retry: 0, born: G.t,
   };
   G.units.push(u); G.byId.set(u.id, u);
   if (countPop) p.pop += D.pop || 1;
@@ -173,7 +173,9 @@ function killEntity(e) {
   e.dead = true; G.dirty = true; G.byId.delete(e.id);
   if (e.kind === 'unit') {
     G.players[e.owner].pop -= UNITS[e.type].pop || 1;
-    G.fx.push({ type: 'blood', x: e.x, y: e.y, t: 0, dur: 2.5 });
+    G.fx.push({ type: 'blood', x: e.x, y: e.y, t: 0, dur: 6 });
+    G.fx.push({ type: 'corpse', x: e.x, y: e.y, ut: e.type, owner: e.owner, dir: e.dir, side: Math.random() < .5 ? 1 : -1, t: 0, dur: 9 });
+    for (let i = 0; i < 5; i++) chip(e.x, e.y, 18, i % 2 ? '#8a1a14' : '#b82a20', 'drop');
   } else if (e.kind === 'building') {
     occupy(e, 0);
     const p = G.players[e.owner];
@@ -181,6 +183,11 @@ function killEntity(e) {
     if (e.research) p.researching = null;
     recalcPop(e.owner);
     G.fx.push({ type: 'boom', x: e.x + e.w / 2, y: e.y + e.h / 2, t: 0, dur: 1.2, r: e.w });
+    if (e.type !== 'farm') {
+      G.fx.push({ type: 'rubble', x: e.x, y: e.y, w: e.w, seed: e.id, t: 0, dur: 40 });
+      for (let i = 0; i < 6 + e.w * 3; i++) chip(e.x + Math.random() * e.w, e.y + Math.random() * e.h, 20 + Math.random() * 30, ['#8a8478', '#6a5a48', '#4a3a2a', PCOL[e.owner]][i % 4], 'chip');
+      for (let i = 0; i < e.w * 3; i++) G.fx.push({ type: 'smoke', x: e.x + Math.random() * e.w, y: e.y + Math.random() * e.h, t: -Math.random() * 1.5, dur: 3 + Math.random() * 2, s: e.w });
+    }
     if (e.owner === 0) notify('¡Has perdido: ' + BUILDINGS[e.type].name + '!', 'danger');
     checkEnd();
   } else if (e.kind === 'animal') {
@@ -356,6 +363,7 @@ function exitTile(b) {
 }
 function finishBuilding(b) {
   b.done = true; b.progress = 1; b.hp = b.maxhp; recalcPop(b.owner);
+  G.fx.push({ type: 'done', x: b.x + b.w / 2, y: b.y + b.h / 2, r: b.w, t: 0, dur: 1.4 });
   if (b.owner === 0) { notify(BUILDINGS[b.type].name + ' completado.', 'ok'); sfx('build'); }
 }
 
@@ -505,7 +513,12 @@ function updateProj(dt) {
     const k = Math.min(1, pr.t / pr.dur);
     if (alive(pr.target)) pr.last = center(pr.target);
     pr.x = pr.sx + (pr.last.x - pr.sx) * k; pr.y = pr.sy + (pr.last.y - pr.sy) * k;
-    if (k >= 1) { if (alive(pr.target)) dealDamage(pr.att, pr.target, pr.dmg); pr.done = true; }
+    if (k >= 1) {
+      const hit = alive(pr.target);
+      if (hit) dealDamage(pr.att, pr.target, pr.dmg);
+      if ((!hit || pr.target.kind === 'building') && G.fx.length < 240) G.fx.push({ type: 'stuck', x: pr.x + (Math.random() - .5) * .3, y: pr.y + (Math.random() - .5) * .3, a: Math.atan2(pr.last.y - pr.sy, pr.last.x - pr.sx), spear: pr.spear, t: 0, dur: 6 });
+      pr.done = true;
+    }
   }
   G.proj = G.proj.filter(p => !p.done);
 }
@@ -756,6 +769,7 @@ function updateGather(u, o, dt) {
     if (!d) { u.order = null; return; }
     if (distEnt(u, d) <= 1.0) {
       G.players[u.owner].res[u.ctype || o.res] += Math.round(u.carry);
+      if (u.owner === 0 && u.carry >= 1) G.fx.push({ type: 'float', x: u.x, y: u.y, txt: '+' + Math.round(u.carry), res: u.ctype || o.res, t: 0, dur: 1.4 });
       u.carry = 0; u.path = null; o.st = 'go';
       if (!alive(o.node)) { const nn = findNode(o.res, o.rx, o.ry, u.owner, 16); if (nn) { o.node = nn; o.rx = nn.x; o.ry = nn.y; } else u.order = null; }
       return;
@@ -866,6 +880,7 @@ function update(dt) {
   for (const n of G.nodes) if (n.shake > 0) n.shake = Math.max(0, n.shake - dt);
   separate(dt);
   updateProj(dt);
+  for (const u of G.units) if (u.path && !u.dead && G.fx.length < 200 && Math.random() < dt * (u.type === 'knight' ? 7 : u.type === 'ram' ? 3 : 1.2)) G.fx.push({ type: 'dust', x: u.x - Math.cos(u.dir) * .25, y: u.y - Math.sin(u.dir) * .25, t: 0, dur: .6 });
   for (const f of G.fx) f.t += dt;
   G.fx = G.fx.filter(f => f.t < f.dur);
   G.fogT -= dt;
