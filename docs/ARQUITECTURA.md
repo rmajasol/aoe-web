@@ -83,7 +83,7 @@ La IA **no hace trampa con la niebla** en sus decisiones de combate (ve todo el 
 - Clic derecho contextual (`contextCommand`): edificio → rally; animal/enemigo → atacar; nodo → recolectar; granja propia → recolectar; obra propia → construir; suelo → mover.
 - Panel de comandos (`getCommands`) dinámico según selección: aldeano → 10 edificios; militar → atacar-mover; edificio → entrenar/avanzar edad; siempre Detener/Eliminar. Teclas `QWER/ASDF/ZXCV` por slot. Se reconstruye solo si cambia la firma (`curSig`).
 - Panel de información (`refreshInfo`) con firma (`infoSig`) y actualizaciones dinámicas de barras.
-- Sonido: osciladores WebAudio (`sfx`), sin archivos. `sfxAt` solo suena si el punto está en pantalla, visible y con límite de frecuencia.
+- Sonido: síntesis WebAudio sin archivos (`ui.js`). Primitivas `nz` (ruido filtrado) y `tn` (tono con barrido) combinadas en el diccionario `SND` (una receta por sonido: `chop` hacha en madera, `mine`/`mineGold` pico en roca/oro, `berry`, `farm`, `butcher`, `hammer`, `timber` árbol que cae, `drop*` entregas por recurso, `sword`, `bash` (contra edificios), `bow`, `arrowhit`, `die`, `crash`). Cada golpe varía el tono (`r`) y pasa por compresor maestro. `sfxAt(kind, x, y)` solo suena si el punto está en pantalla y visible, con límite de frecuencia **por tipo** (`sfxGap`), y ajusta paneo estéreo/volumen según la posición en pantalla. `sfx(kind)` sin posición se usa para avisos de interfaz (`train|build|alert|age`, tonos simples).
 - `notify(msg, kind)`: mensajes apilados (máx. 5, 5 s), kinds `ok|warn|danger`.
 
 ## 9. Registro / diagnóstico (`log.js`)

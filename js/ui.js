@@ -12,20 +12,107 @@ function setSel(list) {
 }
 
 /* ---------- Sonido ---------- */
-let AC = null;
-let lastSfx = 0;
-function sfxAt(kind, x, y) { // sonidos de trabajo: solo si se ven en pantalla y con límite de frecuencia
-  const t = performance.now(); if (t - lastSfx < 70 || !visibleAt(x, y)) return; const p = t2s(x, y); if (p.x < 0 || p.x > VW || p.y < 0 || p.y > VH) return; lastSfx = t; sfx(kind);
+// Síntesis WebAudio sin archivos: ruido filtrado (impactos, roces) + tonos con barrido (cuerpo del golpe).
+let AC = null, MG = null, NB = null;
+function audio() {
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const c = AC.createDynamicsCompressor(); MG = AC.createGain(); MG.gain.value = .3; const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2800; lp.Q.value = .5; MG.connect(lp); lp.connect(c); c.connect(AC.destination);
+    NB = AC.createBuffer(1, AC.sampleRate, AC.sampleRate); const d = NB.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  if (AC.state === 'suspended') AC.resume();
 }
-function sfx(kind) {
+function env(g, t, dur, vol) { g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(vol, t + .003); g.gain.exponentialRampToValueAtTime(.0005, t + dur); }
+function nz(o, t, dur, vol, type, f, q, f2) { // ráfaga de ruido filtrado (f→f2 = barrido del filtro)
+  const s = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = NB; s.loop = true; fl.type = type; fl.Q.value = q || 1; fl.frequency.setValueAtTime(f, t); if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  env(g, t, dur, vol); s.connect(fl); fl.connect(g); g.connect(o); s.start(t, Math.random() * .5); s.stop(t + dur + .02);
+}
+function tn(o, t, dur, vol, type, f, f2, lp) { // tono con barrido de frecuencia (f→f2) y filtro paso-bajo opcional
+  const s = AC.createOscillator(), g = AC.createGain(); s.type = type; s.frequency.setValueAtTime(f, t); if (f2) s.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  env(g, t, dur, vol); let n = s; if (lp) { const fl = AC.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = lp; s.connect(fl); n = fl; }
+  n.connect(g); g.connect(o); s.start(t); s.stop(t + dur + .02);
+}
+// r = variación aleatoria de tono (~0.92–1.08) para que dos golpes seguidos nunca suenen idénticos
+const SND = {
+  chop(o, t, r) { // hacha que muerde el tronco: filo + fibras de madera al partirse + golpe sordo (sin tonos puros, que suenan a taco)
+    nz(o, t, .12, .6, 'lowpass', 2200 * r, .7, 450); nz(o, t + .01, .2, .3, 'bandpass', 650 * r, .6, 400); nz(o, t, .03, .2, 'bandpass', 2200, 1); tn(o, t, .13, .35, 'sine', 115 * r, 55);
+  },
+  mine(o, t, r) { // pico en roca: chasquido + tintineo metálico + golpe sordo
+    nz(o, t, .05, .4, 'bandpass', 1800, .8); tn(o, t, .08, .6, 'sine', 150 * r, 65); tn(o, t, .1, .06, 'sine', 1180 * r);
+  },
+  mineGold(o, t, r) { // pico en veta de oro: más resonante y brillante
+    nz(o, t, .04, .3, 'bandpass', 1800, .8); tn(o, t, .07, .5, 'sine', 170 * r, 80); tn(o, t, .2, .1, 'sine', 1300 * r); tn(o, t, .25, .06, 'sine', 1950 * r);
+  },
+  berry(o, t, r) { // roce de hojas al arrancar bayas
+    nz(o, t, .18, .3, 'bandpass', 1500 * r, .6, 2200); nz(o, t + .09, .12, .2, 'bandpass', 1800 * r, .6, 1100);
+  },
+  farm(o, t, r) { // azada/hoz: silbido + golpe blando en tierra
+    nz(o, t, .15, .2, 'bandpass', 800 * r, .6, 1600); nz(o, t + .13, .1, .4, 'lowpass', 700, .7); tn(o, t + .13, .09, .35, 'sine', 110 * r, 60);
+  },
+  butcher(o, t, r) { // cuchillo en carne: tajo + golpe húmedo
+    nz(o, t, .05, .22, 'bandpass', 2200 * r, 1.5); nz(o, t + .02, .12, .5, 'lowpass', 520 * r, .8); tn(o, t + .02, .13, .5, 'sine', 125 * r, 55);
+  },
+  hammer(o, t, r) { // martillo sobre clavo/madera: golpe + tintineo corto
+    nz(o, t, .04, .35, 'bandpass', 1300 * r, .9); tn(o, t, .1, .6, 'sine', 240 * r, 140); tn(o, t, .05, .25, 'triangle', 480 * r, 300);
+  },
+  timber(o, t, r) { // árbol que cae: crujido, follaje y golpe contra el suelo
+    nz(o, t, .35, .35, 'bandpass', 1400, 1.6, 400); nz(o, t + .05, .5, .2, 'bandpass', 1800, .6, 900); nz(o, t + .55, .35, .6, 'lowpass', 400, .7); tn(o, t + .55, .4, .8, 'sine', 90 * r, 35);
+  },
+  dropw(o, t, r) { // troncos sobre la pila
+    tn(o, t, .15, .5, 'sine', 150 * r, 70); nz(o, t, .09, .35, 'bandpass', 600 * r, 1); tn(o, t + .08, .1, .3, 'triangle', 300 * r, 180); nz(o, t + .08, .05, .15, 'bandpass', 900, .8);
+  },
+  dropf(o, t, r) { // saco/cesta de comida
+    nz(o, t, .2, .8, 'lowpass', 900 * r, .7, 450); tn(o, t, .12, .5, 'sine', 95 * r, 60);
+  },
+  dropg(o, t, r) { // monedas/lingotes tintineando
+    for (let i = 0; i < 3; i++) { const d = i * .06, f = (1500 + i * 350) * r; tn(o, t + d, .14, .2, 'sine', f); tn(o, t + d, .08, .06, 'sine', f * 1.5); }
+  },
+  drops(o, t, r) { // piedras al montón
+    nz(o, t, .1, .5, 'bandpass', 1500 * r, 1); tn(o, t, .1, .5, 'sine', 130 * r, 60); nz(o, t + .07, .07, .25, 'bandpass', 1200 * r, .8);
+  },
+  sword(o, t, r) { // choque de acero: golpe + resonancia metálica
+    nz(o, t, .06, .4, 'bandpass', 1500 * r, 1); tn(o, t, .1, .5, 'sine', 200 * r, 100); tn(o, t, .14, .07, 'sine', 900 * r);
+  },
+  bash(o, t, r) { // golpe contundente contra un edificio (ariete, mazazo)
+    tn(o, t, .3, .85, 'sine', 95 * r, 38); nz(o, t, .22, .55, 'lowpass', 750, .7, 200); nz(o, t, .05, .2, 'bandpass', 1000, .8);
+  },
+  bow(o, t, r) { // cuerda del arco + silbido de la flecha
+    tn(o, t, .12, .45, 'triangle', 330 * r, 150); nz(o, t, .09, .25, 'bandpass', 1400, .8); nz(o, t + .03, .2, .1, 'bandpass', 1000, .8, 1800);
+  },
+  arrowhit(o, t, r) { // flecha clavándose
+    nz(o, t, .05, .7, 'bandpass', 1300 * r, 1.2); tn(o, t, .07, .7, 'sine', 270 * r, 110);
+  },
+  die(o, t, r) { // quejido breve
+    tn(o, t, .28, .4, 'sawtooth', 200 * r, 100, 500); nz(o, t, .2, .18, 'bandpass', 700, 1.5);
+  },
+  crash(o, t, r) { // edificio que se derrumba: estruendo grave + escombros
+    nz(o, t, .9, .8, 'lowpass', 700, .7, 120); tn(o, t, .8, .9, 'sine', 75 * r, 28);
+    for (let i = 0; i < 5; i++) { nz(o, t + .1 + i * .11 + Math.random() * .06, .12, .3, 'bandpass', 600 + Math.random() * 1500, 1); tn(o, t + .1 + i * .11, .1, .25, 'sine', 120 + Math.random() * 60, 60); }
+  },
+};
+const sfxGap = { chop: 140, mine: 140, mineGold: 140, berry: 180, farm: 180, butcher: 160, hammer: 140, sword: 55, bash: 110, bow: 45, arrowhit: 45, die: 90, dropw: 120, dropf: 120, dropg: 120, drops: 120, timber: 200, crash: 250 };
+const sfxLast = {};
+function sfxAt(kind, x, y) { // sonidos de mundo: solo si se ven en pantalla; límite por tipo; volumen y paneo según la posición en pantalla
+  const t = performance.now(); if (t - (sfxLast[kind] || 0) < (sfxGap[kind] || 70) || !visibleAt(x, y)) return;
+  const p = t2s(x, y); if (p.x < 0 || p.x > VW || p.y < 0 || p.y > VH) return; sfxLast[kind] = t;
+  const dx = p.x / VW - .5, dy = p.y / VH - .5;
+  sfx(kind, Math.max(-.8, Math.min(.8, dx * 1.6)), Math.max(.25, .8 - Math.hypot(dx, dy) * .8));
+}
+function sfx(kind, pan, vol) {
   try {
-    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
-    const notes = { chop: [[110, .045]], mine: [[1300, .03], [900, .04]], hammer: [[170, .04], [120, .04]], train: [[660, .08], [880, .12]], build: [[440, .08], [550, .08], [660, .12]], alert: [[220, .15], [180, .2]], age: [[440, .1], [550, .1], [660, .1], [880, .25]] }[kind] || [];
+    audio(); const f = SND[kind];
+    if (f) {
+      const g = AC.createGain(); g.gain.value = vol == null ? 1 : vol;
+      if (AC.createStereoPanner) { const p = AC.createStereoPanner(); p.pan.value = pan || 0; g.connect(p); p.connect(MG); } else g.connect(MG);
+      f(g, AC.currentTime + .005, .92 + Math.random() * .16); return;
+    }
+    const notes = { train: [[660, .08], [880, .12]], build: [[440, .08], [550, .08], [660, .12]], alert: [[220, .15], [180, .2]], age: [[440, .1], [550, .1], [660, .1], [880, .25]] }[kind] || []; // avisos de interfaz
     let t = AC.currentTime;
-    for (const [f, d] of notes) {
+    for (const [fr, d] of notes) {
       const o = AC.createOscillator(), g = AC.createGain();
-      o.type = kind === 'alert' ? 'sawtooth' : 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(.06, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
-      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d); t += d;
+      o.type = kind === 'alert' ? 'sawtooth' : 'triangle'; o.frequency.value = fr; g.gain.setValueAtTime(.06, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
+      o.connect(g); g.connect(MG); o.start(t); o.stop(t + d); t += d;
     }
   } catch (e) { }
 }

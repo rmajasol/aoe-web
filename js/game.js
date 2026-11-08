@@ -176,8 +176,9 @@ function killEntity(e) {
     G.fx.push({ type: 'blood', x: e.x, y: e.y, t: 0, dur: 6 });
     G.fx.push({ type: 'corpse', x: e.x, y: e.y, ut: e.type, owner: e.owner, dir: e.dir, side: Math.random() < .5 ? 1 : -1, t: 0, dur: 9 });
     for (let i = 0; i < 5; i++) chip(e.x, e.y, 18, i % 2 ? '#8a1a14' : '#b82a20', 'drop');
+    sfxAt('die', e.x, e.y);
   } else if (e.kind === 'building') {
-    occupy(e, 0);
+    occupy(e, 0); sfxAt('crash', e.x + e.w / 2, e.y + e.h / 2);
     LOG.event('edificio destruido', { owner: e.owner, type: e.type, x: e.x, y: e.y });
     const p = G.players[e.owner];
     for (const q of e.queue) p.pop -= UNITS[q.type].pop || 1;
@@ -198,7 +199,7 @@ function killEntity(e) {
   } else {
     if (!e.noblock) { G.occ[e.y * W + e.x] = 0; G.blk[e.y * W + e.x] = 0; G.pv++; }
     if (e.type === 'tree') {
-      G.fx.push({ type: 'fell', x: e.x + .5, y: e.y + .5, v: e.v, dir: Math.random() < .5 ? 1 : -1, t: 0, dur: 1.3 });
+      G.fx.push({ type: 'fell', x: e.x + .5, y: e.y + .5, v: e.v, dir: Math.random() < .5 ? 1 : -1, t: 0, dur: 1.3 }); sfxAt('timber', e.x + .5, e.y + .5);
       for (let i = 0; i < 10; i++) chip(e.x + .5, e.y + .5, 36 + Math.random() * 20, ['#2f8434', '#58b24a', '#7ccb5a', '#8a5a2a'][i % 4], 'leaf');
     }
   }
@@ -509,7 +510,11 @@ function attackOnce(u, t) {
   if (D.range > 0 || hunting) {
     const c = center(t);
     G.proj.push({ sx: u.x, sy: u.y, x: u.x, y: u.y, target: t, last: c, dmg, att: u, spear: hunting, t: 0, dur: Math.max(0.15, distEnt(u, t) / (hunting ? 11 : 14)) });
-  } else dealDamage(u, t, dmg);
+    sfxAt('bow', u.x, u.y);
+  } else {
+    sfxAt(t.kind === 'building' ? 'bash' : t.kind === 'animal' ? 'butcher' : 'sword', u.x, u.y);
+    dealDamage(u, t, dmg);
+  }
 }
 function updateProj(dt) {
   for (const pr of G.proj) {
@@ -519,7 +524,7 @@ function updateProj(dt) {
     pr.x = pr.sx + (pr.last.x - pr.sx) * k; pr.y = pr.sy + (pr.last.y - pr.sy) * k;
     if (k >= 1) {
       const hit = alive(pr.target);
-      if (hit) dealDamage(pr.att, pr.target, pr.dmg);
+      if (hit) { sfxAt('arrowhit', pr.x, pr.y); dealDamage(pr.att, pr.target, pr.dmg); }
       if ((!hit || pr.target.kind === 'building') && G.fx.length < 240) G.fx.push({ type: 'stuck', x: pr.x + (Math.random() - .5) * .3, y: pr.y + (Math.random() - .5) * .3, a: Math.atan2(pr.last.y - pr.sy, pr.last.x - pr.sx), spear: pr.spear, t: 0, dur: 6 });
       pr.done = true;
     }
@@ -738,13 +743,16 @@ function onStrike(u, n) {
   } else if (n.type === 'gold' || n.type === 'stone') {
     n.shake = .26; for (let i = 0; i < 5; i++) chip(x, y, 14 + Math.random() * 10, i % 2 ? '#ffe48a' : '#9aa0a6', i % 2 ? 'spark' : 'chip');
     if (n.type === 'gold') chip(x, y, 16, '#ffd23a', 'chip');
-    sfxAt('mine', u.x, u.y);
+    sfxAt(n.type === 'gold' ? 'mineGold' : 'mine', u.x, u.y);
   } else if (n.type === 'berry') {
     n.shake = .4; for (let i = 0; i < 3; i++) chip(x, y, 14 + Math.random() * 10, i === 0 ? '#e8284a' : '#58b24a', i === 0 ? 'chip' : 'leaf');
+    sfxAt('berry', u.x, u.y);
   } else if (n.type === 'carcass') {
     for (let i = 0; i < 2; i++) chip(x, y, 8, '#b02a2a', 'chip');
+    sfxAt('butcher', u.x, u.y);
   } else if (n.kind === 'building') { // granja
     for (let i = 0; i < 3; i++) chip(u.x, u.y, 16, '#e0c048', 'leaf');
+    sfxAt('farm', u.x, u.y);
   }
 }
 function updateGather(u, o, dt) {
@@ -781,7 +789,7 @@ function updateGather(u, o, dt) {
     const d = findDropoff(u, u.ctype || o.res);
     if (!d) { u.order = null; return; }
     if (distEnt(u, d) <= 1.0) {
-      G.players[u.owner].res[u.ctype || o.res] += Math.round(u.carry);
+      G.players[u.owner].res[u.ctype || o.res] += Math.round(u.carry); sfxAt({ wood: 'dropw', food: 'dropf', gold: 'dropg', stone: 'drops' }[u.ctype || o.res], u.x, u.y);
       if (u.owner === 0 && u.carry >= 1) G.fx.push({ type: 'float', x: u.x, y: u.y, txt: '+' + Math.round(u.carry), res: u.ctype || o.res, t: 0, dur: 1.4 });
       u.carry = 0; u.path = null; o.st = 'go';
       if (!alive(o.node)) { const nn = findNode(o.res, o.rx, o.ry, u.owner, 16); if (nn) { o.node = nn; o.rx = nn.x; o.ry = nn.y; } else u.order = null; }

@@ -20,6 +20,8 @@
 
 **Nueva orden de unidad**: caso nuevo en el `switch` de `updateUnit` + helper `issueX` + disparo desde `contextCommand` o `getCommands` en ui.js.
 
+**Nuevo sonido**: receta en `SND` (`ui.js`, con `nz`/`tn`; `o` = nodo de salida, `t` = inicio, `r` = variación de tono), su separación mínima en `sfxGap` y la llamada `sfxAt('nombre', x, y)` en el punto del golpe (`onStrike`, `attackOnce`, etc.). Para probarlo sin altavoces, renderizar con `OfflineAudioContext` y mirar el pico/duración.
+
 **Ajustar balance/dificultad**: solo `data.js` y `DIFFS` en `ai.js`.
 
 ## Trampas y detalles conocidos
