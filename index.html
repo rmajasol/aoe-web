@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reinos en Guerra</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="top">
+  <div class="res"><span>🍖</span><b id="r-food">0</b></div>
+  <div class="res"><span>🪵</span><b id="r-wood">0</b></div>
+  <div class="res"><span>🪙</span><b id="r-gold">0</b></div>
+  <div class="res"><span>🪨</span><b id="r-stone">0</b></div>
+  <div class="res pop"><span>👥</span><b id="r-pop">0/0</b></div>
+  <div class="grow"></div>
+  <div id="age"></div>
+  <div id="clock">0:00</div>
+  <button id="btn-speed">⏩ x1</button>
+  <button id="btn-pause">⏯</button>
+</div>
+
+<div id="alert"></div>
+
+<div id="bottom">
+  <div id="mmwrap"><canvas id="minimap" width="168" height="168"></canvas></div>
+  <div id="info"></div>
+  <div id="cmds"></div>
+</div>
+<div id="tip"></div>
+
+<div id="menu">
+  <div class="card">
+    <h1>⚔️ Reinos en Guerra</h1>
+    <p class="sub">Estrategia en tiempo real · Construye, recolecta, avanza de edad y destruye a tu enemigo</p>
+    <div class="diff">
+      <button data-d="easy">Fácil</button>
+      <button data-d="normal" class="sel">Normal</button>
+      <button data-d="hard">Difícil</button>
+    </div>
+    <button id="start">Comenzar partida</button>
+    <div class="help">
+      <b>Controles</b>
+      <ul>
+        <li><kbd>Clic izq</kbd> seleccionar / arrastrar para caja · <kbd>Doble clic</kbd> mismo tipo en pantalla</li>
+        <li><kbd>Clic der</kbd> mover, atacar, recolectar, construir o fijar punto de reunión</li>
+        <li><kbd>Flechas</kbd> / bordes de pantalla / rueda central: mover cámara · <kbd>Rueda</kbd> zoom</li>
+        <li><kbd>Q W E R / A S D F / Z X C V</kbd> botones del panel de comandos</li>
+        <li><kbd>Ctrl+1..9</kbd> crear grupo · <kbd>1..9</kbd> seleccionar · <kbd>.</kbd> aldeano inactivo · <kbd>H</kbd> ir al centro urbano</li>
+        <li><kbd>Shift</kbd> al construir: colocar varios · <kbd>Supr</kbd> eliminar · <kbd>P</kbd> pausa · <kbd>+</kbd>/<kbd>-</kbd> velocidad</li>
+      </ul>
+      <b>Objetivo:</b> destruye todos los edificios enemigos. ¡Los arietes (Edad de los Castillos) son tu mejor arma contra edificios!
+    </div>
+  </div>
+</div>
+
+<div id="end" class="hidden">
+  <div class="card">
+    <h1 id="end-title"></h1>
+    <p id="end-sub" class="sub"></p>
+    <button onclick="location.reload()">Jugar de nuevo</button>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
