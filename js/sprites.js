@@ -282,14 +282,14 @@ function bSprite(type, owner) {
 
 /* ---------- Figuras 3D de unidades (proyección isométrica en vivo) ---------- */
 const FG = { C: 1, S: 0, list: [] };
-function fp(f, r, z) { const wx = f * FG.C - r * FG.S, wy = f * FG.S + r * FG.C; return [wx - wy, (wx + wy) / 2 - z, wx + wy + z * .05]; }
+function fp(f, r, z) { const wx = f * FG.C - r * FG.S, wy = f * FG.S + r * FG.C; return [wx - wy, (wx + wy) / 2 - z, wx + wy + z * .05, f, r, z]; }
 function fcap(a, b, r, col) { FG.list.push({ t: 0, a, b, r, col, d: (a[2] + b[2]) / 2 }); }
 function fsph(c, r, col) { FG.list.push({ t: 1, c, r, col, d: c[2] }); }
 function fpoly(pts, col, d, edge) { FG.list.push({ t: 2, pts, col, d, edge }); }
 function fdisc(c, A, B, rad, col, n) { // disco en el plano generado por A y B (vectores locales f,r,z)
-  const pts = []; n = n || 14;
-  for (let i = 0; i < n; i++) { const t = i / n * Math.PI * 2, ca = Math.cos(t) * rad, sa = Math.sin(t) * rad; pts.push(fp(c[0] + A[0] * ca + B[0] * sa, c[1] + A[1] * ca + B[1] * sa, c[2] + A[2] * ca + B[2] * sa)); }
-  fpoly(pts, col, fp(c[0], c[1], c[2])[2] + .3, true);
+  const pts = []; n = n || 14; const cf = c[3], cr = c[4], cz = c[5]; // c viene de fp(): usa las coordenadas locales
+  for (let i = 0; i < n; i++) { const t = i / n * Math.PI * 2, ca = Math.cos(t) * rad, sa = Math.sin(t) * rad; pts.push(fp(cf + A[0] * ca + B[0] * sa, cr + A[1] * ca + B[1] * sa, cz + A[2] * ca + B[2] * sa)); }
+  fpoly(pts, col, c[2] + .3, true);
 }
 function fbox(f0, f1, r0, r1, z0, z1, col) { // caras visibles de una caja
   const faces = [[[0, 0, 1], [[f0, r0, z1], [f1, r0, z1], [f1, r1, z1], [f0, r1, z1]]], [[1, 0, 0], [[f1, r0, z0], [f1, r1, z0], [f1, r1, z1], [f1, r0, z1]]], [[-1, 0, 0], [[f0, r1, z0], [f0, r0, z0], [f0, r0, z1], [f0, r1, z1]]],

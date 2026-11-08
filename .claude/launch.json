@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "aoe-web", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8765"], "port": 8765 }
+    { "name": "aoe-web", "runtimeExecutable": "python", "runtimeArgs": ["serve.py"], "port": 8765 }
   ]
 }
