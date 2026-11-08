@@ -15,8 +15,16 @@ const NODE = {
   berry: { res: 'food',  amount: 200, name: 'Arbusto de bayas',   rate: 1.0, icon: '🫐' },
   gold:  { res: 'gold',  amount: 800, name: 'Mina de oro',        rate: 0.8, icon: '🪙' },
   stone: { res: 'stone', amount: 800, name: 'Cantera de piedra',  rate: 0.8, icon: '🪨' },
+  carcass: { res: 'food', amount: 0, name: 'Carcasa', rate: 1.5, icon: '🥩' },
 };
 const FARM_RATE = 0.6;
+// Fauna salvaje. walk/run en casillas/seg; skittish = distancia a la que huye de las unidades; fights = contraataca
+const ANIMALS = {
+  deer:  { name: 'Ciervo',  icon: '🦌', hp: 30, food: 140, walk: .9,  run: 4.2, skittish: 3.2, atk: 0,  cls: 'animal', mArm: 0, pArm: 0 },
+  boar:  { name: 'Jabalí',  icon: '🐗', hp: 80, food: 320, walk: .8,  run: 3.4, skittish: 0,   atk: 11, fights: true, cls: 'animal', mArm: 0, pArm: 1 },
+  pig:   { name: 'Cerdo',   icon: '🐖', hp: 45, food: 170, walk: .55, run: 2.6, skittish: 0,   atk: 0,  cls: 'animal', mArm: 0, pArm: 0 },
+  sheep: { name: 'Oveja',   icon: '🐑', hp: 28, food: 110, walk: .6,  run: 2.8, skittish: 0,   atk: 0,  cls: 'animal', mArm: 0, pArm: 0 },
+};
 
 // Unidades. rate = segundos entre ataques, speed = casillas/seg, range en casillas
 const UNITS = {

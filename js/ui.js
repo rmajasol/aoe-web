@@ -13,10 +13,14 @@ function setSel(list) {
 
 /* ---------- Sonido ---------- */
 let AC = null;
+let lastSfx = 0;
+function sfxAt(kind, x, y) { // sonidos de trabajo: solo si se ven en pantalla y con límite de frecuencia
+  const t = performance.now(); if (t - lastSfx < 70 || !visibleAt(x, y)) return; const p = t2s(x, y); if (p.x < 0 || p.x > VW || p.y < 0 || p.y > VH) return; lastSfx = t; sfx(kind);
+}
 function sfx(kind) {
   try {
     if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
-    const notes = { train: [[660, .08], [880, .12]], build: [[440, .08], [550, .08], [660, .12]], alert: [[220, .15], [180, .2]], age: [[440, .1], [550, .1], [660, .1], [880, .25]] }[kind] || [];
+    const notes = { chop: [[110, .045]], mine: [[1300, .03], [900, .04]], hammer: [[170, .04], [120, .04]], train: [[660, .08], [880, .12]], build: [[440, .08], [550, .08], [660, .12]], alert: [[220, .15], [180, .2]], age: [[440, .1], [550, .1], [660, .1], [880, .25]] }[kind] || [];
     let t = AC.currentTime;
     for (const [f, d] of notes) {
       const o = AC.createOscillator(), g = AC.createGain();
@@ -40,33 +44,52 @@ function showEnd(victory) {
 const fmtTime = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
 
 /* ---------- Selección ---------- */
-function pick(tx, ty) {
-  let best = null, bd = 0.62;
+function unitScr(u) { return { x: (isoX(u.x, u.y) - cam.x) * cam.zoom, y: (isoY(u.x, u.y) - cam.y) * cam.zoom - 15 * cam.zoom }; }
+function inDiamond(px, py, cx, cy, hw, hh) { return Math.abs(px - cx) / hw + Math.abs(py - cy) / hh <= 1; }
+function buildingHit(b, wx, wy) {
+  const [H, RH] = BH[b.type], top = b.type === 'tower' ? 66 : H + RH * .6, cx = isoX(b.x + b.w / 2, b.y + b.h / 2), cy = isoY(b.x + b.w / 2, b.y + b.h / 2);
+  for (let k = 0; k <= 4; k++) if (inDiamond(wx, wy, cx, cy - top * k / 4, b.w * TILE, b.w * TILE / 2)) return true;
+  return false;
+}
+// Selección por coordenadas de pantalla (vista isométrica)
+function pick(sx, sy) {
+  const wx = sx / cam.zoom + cam.x, wy = sy / cam.zoom + cam.y;
+  let best = null, bd = 1e9;
   for (const u of G.units) {
     if (u.dead || (u.owner !== 0 && !visibleAt(u.x, u.y))) continue;
-    const d = Math.hypot(u.x - tx, u.y - ty);
-    if (d < bd) { bd = d; best = u; }
+    const ux = isoX(u.x, u.y), uy = isoY(u.x, u.y), h = UNIT_H[u.type], big = u.type === 'knight' || u.type === 'ram' ? 1.4 : 1;
+    if (Math.abs(wx - ux) <= 13 * big && wy >= uy - h && wy <= uy + 7) { const d = Math.hypot(wx - ux, wy - (uy - h * .45)); if (d < bd) { bd = d; best = u; } }
   }
   if (best) return best;
-  for (const b of G.buildings) {
-    if (b.dead || tx < b.x || tx > b.x + b.w || ty < b.y - b.w * 0.15 || ty > b.y + b.h) continue;
-    if (b.owner !== 0 && G.vis[Math.min(MAP_H - 1, Math.floor(b.y + b.h / 2)) * MAP_W + Math.floor(b.x + b.w / 2)] === 0) continue;
-    return b;
+  for (const a of G.animals) {
+    if (a.dead || !visibleAt(a.x, a.y)) continue;
+    const ax = isoX(a.x, a.y), ay = isoY(a.x, a.y);
+    if (Math.abs(wx - ax) <= 20 && wy >= ay - 34 && wy <= ay + 8) { const d = Math.hypot(wx - ax, wy - (ay - 14)); if (d < bd) { bd = d; best = a; } }
   }
-  const x = Math.floor(tx), y = Math.floor(ty);
-  for (const n of G.nodes) if (!n.dead && n.x === x && n.y === y && G.vis[y * MAP_W + x] > 0) return n;
-  return null;
+  if (best) return best;
+  let bdp = -1e9;
+  for (const b of G.buildings) {
+    if (b.dead || !buildingHit(b, wx, wy)) continue;
+    if (b.owner !== 0 && G.vis[Math.min(MAP_H - 1, Math.floor(b.y + b.h / 2)) * MAP_W + Math.floor(b.x + b.w / 2)] === 0) continue;
+    const d = b.x + b.y + b.w; if (d > bdp) { bdp = d; best = b; }
+  }
+  if (best) return best;
+  for (const n of G.nodes) {
+    if (n.dead || G.vis[n.y * MAP_W + n.x] === 0) continue;
+    const nx = isoX(n.x + .5, n.y + .5), ny = isoY(n.x + .5, n.y + .5), hh = n.type === 'tree' ? 52 : 22;
+    if (Math.abs(wx - nx) <= (n.type === 'tree' ? 15 : 17) && wy >= ny - hh && wy <= ny + 8) { const d = n.x + n.y; if (d > bdp) { bdp = d; best = n; } }
+  }
+  return best;
 }
 function selectOnScreenSame(type) {
-  const a = s2w(0, 0), b = s2w(VW, VH);
-  return G.units.filter(u => !u.dead && u.owner === 0 && u.type === type && u.x * TILE >= a.x && u.x * TILE <= b.x && u.y * TILE >= a.y && u.y * TILE <= b.y);
+  return G.units.filter(u => { if (u.dead || u.owner !== 0 || u.type !== type) return false; const p = unitScr(u); return p.x >= 0 && p.x <= VW && p.y >= 0 && p.y <= VH; });
 }
 function mouseUp(e) {
   if (!dragBox) return;
   const db = dragBox; dragBox = null;
   const shift = e.shiftKey;
   if (Math.abs(db.x1 - db.x0) < 5 && Math.abs(db.y1 - db.y0) < 5) {
-    const w = s2w(db.x1, db.y1), t = pick(w.x / TILE, w.y / TILE);
+    const t = pick(db.x1, db.y1);
     if (!t) { if (!shift) setSel([]); return; }
     const now = performance.now();
     if (t.kind === 'unit' && t.owner === 0 && lastClick.type === t.type && now - lastClick.t < 400) { setSel(selectOnScreenSame(t.type)); lastClick = { t: 0, type: null }; return; }
@@ -75,8 +98,8 @@ function mouseUp(e) {
       setSel(selSet.has(t.id) ? sel.filter(s => s !== t) : sel.concat(t));
     } else setSel([t]);
   } else {
-    const a = s2w(Math.min(db.x0, db.x1), Math.min(db.y0, db.y1)), b = s2w(Math.max(db.x0, db.x1), Math.max(db.y0, db.y1));
-    const found = G.units.filter(u => !u.dead && u.owner === 0 && u.x * TILE >= a.x && u.x * TILE <= b.x && u.y * TILE >= a.y && u.y * TILE <= b.y);
+    const x0 = Math.min(db.x0, db.x1), x1 = Math.max(db.x0, db.x1), y0 = Math.min(db.y0, db.y1), y1 = Math.max(db.y0, db.y1);
+    const found = G.units.filter(u => { if (u.dead || u.owner !== 0) return false; const p = unitScr(u); return p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1; });
     if (found.length) setSel(shift && sel.length && sel[0].kind === 'unit' && sel[0].owner === 0 ? sel.concat(found.filter(f => !selSet.has(f.id))) : found);
     else if (!shift) setSel([]);
   }
@@ -88,20 +111,22 @@ function contextCommand(sx, sy) {
   if (buildType) { buildType = null; return; }
   if (amoveMode) { amoveMode = false; return; }
   if (!sel.length || sel[0].owner !== 0) return;
-  const w = s2w(sx, sy), tx = w.x / TILE, ty = w.y / TILE, t = pick(tx, ty);
+  const tt = s2t(sx, sy), tx = tt.x, ty = tt.y, t = pick(sx, sy);
   if (sel[0].kind === 'building') {
     for (const b of sel) if (b.done && BUILDINGS[b.type].trains) b.rally = t && t.kind === 'node' ? { node: t } : { x: tx, y: ty };
     ring(tx, ty, '#ffffff'); return;
   }
   const units = sel.filter(e => e.kind === 'unit');
-  if (t && t.owner === 1) { issueAttack(units, t); ring(tx, ty, '#ff5d5d'); }
+  if (t && t.kind === 'animal') { issueAttack(units, t); ring(t.x, t.y, '#ffb347'); }
+  else if (t && t.owner === 1) { issueAttack(units, t); ring(tx, ty, '#ff5d5d'); }
   else if (t && t.kind === 'node') { issueGather(units, t); ring(t.x + .5, t.y + .5, '#ffe97a'); }
   else if (t && t.kind === 'building' && t.owner === 0 && t.type === 'farm' && t.done) { issueGather(units, t); ring(tx, ty, '#ffe97a'); }
   else if (t && t.kind === 'building' && t.owner === 0 && !t.done) { issueBuild(units, t); ring(tx, ty, '#7ad0ff'); }
   else { issueMove(units, tx, ty, false); ring(tx, ty); }
 }
 function minimapCommand(e, rightClick) {
-  const r = mm.getBoundingClientRect(), tx = (e.clientX - r.left) / r.width * MAP_W, ty = (e.clientY - r.top) / r.height * MAP_H;
+  const r = mm.getBoundingClientRect(), k = MMK(), mx = (e.clientX - r.left) / r.width * mm.width, my = (e.clientY - r.top) / r.height * mm.height;
+  const a = mx / k - MAP_H, b = my * 2 / k, tx = Math.max(0, Math.min(MAP_W, (a + b) / 2)), ty = Math.max(0, Math.min(MAP_H, (b - a) / 2));
   if (rightClick) {
     if (sel.length && sel[0].owner === 0 && sel[0].kind === 'unit') { issueMove(sel, tx, ty, amoveMode); amoveMode = false; ring(tx, ty); }
   } else centerCam(tx, ty);
@@ -214,8 +239,9 @@ function refreshInfo(force) {
           ${e.type === 'farm' ? '<div id="i-food"></div>' : ''}
           ${e.owner === 0 && e.done ? '<div class="queue" id="i-queue"></div><div class="bar"><div id="i-qp"></div></div>' : ''}</div>`;
       } else {
-        const D = NODE[e.type];
-        h = `<div class="portrait">${D.icon}</div><div class="det"><h3>${D.name}</h3><div id="i-hp">${RES_ICON[e.res]} ${RES_NAME[e.res]}: ${Math.ceil(e.amount)}</div></div>`;
+        const D = e.kind === 'animal' ? ANIMALS[e.type] : NODE[e.type];
+        if (e.kind === 'animal') h = `<div class="portrait">${D.icon}</div><div class="det"><h3>${D.name}</h3><div id="i-hp">❤️</div><div class="st">🍖 ${D.food} de comida${D.fights ? ' · ⚠️ ataca si lo hieres' : D.skittish ? ' · huye rápido' : ''}</div></div>`;
+        else h = `<div class="portrait">${D.icon}</div><div class="det"><h3>${D.name}</h3><div id="i-hp">${RES_ICON[e.res]} ${RES_NAME[e.res]}: ${Math.ceil(e.amount)}</div></div>`;
       }
       box.innerHTML = h;
       const q = $('i-queue');
@@ -271,8 +297,8 @@ function initInput() {
     if (e.button === 0) {
       if (buildType) { tryPlace(e.shiftKey); return; }
       if (amoveMode) {
-        const w = s2w(e.clientX, e.clientY);
-        if (sel.length && sel[0].owner === 0) { issueMove(sel.filter(x => x.kind === 'unit'), w.x / TILE, w.y / TILE, true); ring(w.x / TILE, w.y / TILE, '#ff5d5d'); }
+        const w = s2t(e.clientX, e.clientY);
+        if (sel.length && sel[0].owner === 0) { issueMove(sel.filter(x => x.kind === 'unit'), w.x, w.y, true); ring(w.x, w.y, '#ff5d5d'); }
         amoveMode = false; return;
       }
       dragBox = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY };

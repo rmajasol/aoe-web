@@ -3,7 +3,7 @@
 const W = MAP_W, H = MAP_H;
 const G = {
   t: 0, speed: 1, over: false, paused: false, nextId: 1,
-  units: [], buildings: [], nodes: [], proj: [], fx: [],
+  units: [], buildings: [], nodes: [], animals: [], proj: [], fx: [],
   players: [], byId: new Map(),
   terrain: null, blk: null, occ: null, pv: 0, vis: null,
   fogT: 0, dirty: false, rand: Math.random, lastAlert: -99, starts: [],
@@ -27,18 +27,19 @@ function distRect(px, py, r) {
   const dx = Math.max(r.x - px, 0, px - (r.x + r.w)), dy = Math.max(r.y - py, 0, py - (r.y + r.h));
   return Math.hypot(dx, dy);
 }
-function center(e) { return e.kind === 'unit' ? { x: e.x, y: e.y } : { x: e.x + e.w / 2, y: e.y + e.h / 2 }; }
+const isPt = e => e.kind === 'unit' || e.kind === 'animal';
+function center(e) { return isPt(e) ? { x: e.x, y: e.y } : { x: e.x + e.w / 2, y: e.y + e.h / 2 }; }
 function distEnt(u, t) {
-  if (t.kind === 'unit') return Math.max(0, Math.hypot(u.x - t.x, u.y - t.y) - 0.3);
+  if (isPt(t)) return Math.max(0, Math.hypot(u.x - t.x, u.y - t.y) - 0.3);
   return distRect(u.x, u.y, t);
 }
-function defOf(e) { return e.kind === 'unit' ? UNITS[e.type] : BUILDINGS[e.type]; }
+function defOf(e) { return e.kind === 'unit' ? UNITS[e.type] : e.kind === 'animal' ? ANIMALS[e.type] : BUILDINGS[e.type]; }
 
 /* ---------- Mapa ---------- */
 function resetWorld() {
   G.terrain = new Uint8Array(W * H); G.blk = new Uint8Array(W * H); G.occ = new Uint8Array(W * H);
   G.vis = new Uint8Array(W * H);
-  G.units = []; G.buildings = []; G.nodes = []; G.proj = []; G.fx = [];
+  G.units = []; G.buildings = []; G.nodes = []; G.animals = []; G.proj = []; G.fx = [];
   G.byId.clear(); G.nextId = 1; G.pv++;
 }
 function addNode(type, x, y) {
@@ -109,6 +110,16 @@ function genMap(seed) {
   cluster('gold', W / 2 - 4, H / 2 + 3, 6, 2); cluster('gold', W / 2 + 4, H / 2 - 3, 6, 2);
   cluster('stone', W / 2, H / 2 - 7, 5, 2); cluster('stone', W / 2, H / 2 + 7, 5, 2);
   cluster('berry', W / 2 - 10, H / 2 - 10, 6, 3); cluster('berry', W / 2 + 10, H / 2 + 10, 6, 3);
+  // fauna
+  const herd = (type, n, cx, cy, spread) => { for (let i = 0; i < n; i++) for (let k = 0; k < 14; k++) { const x = cx + (R() - .5) * spread * 2, y = cy + (R() - .5) * spread * 2, tx = Math.floor(x), ty = Math.floor(y); if (inMap(tx, ty) && !G.blk[ty * W + tx] && !nearBase(x, y, 7)) { addAnimal(type, x, y); break; } } };
+  cs.forEach(c => {
+    const ang = Math.atan2(H / 2 - c.y, W / 2 - c.x), at = (a, d) => ({ x: Math.min(W - 4, Math.max(4, c.x + Math.cos(a) * d)), y: Math.min(H - 4, Math.max(4, c.y + Math.sin(a) * d)) });
+    let p = at(ang + 1.7, 10); herd('pig', 3, p.x, p.y, 2.2);
+    p = at(ang - 1.7, 11); herd('sheep', 3, p.x, p.y, 2.2);
+    p = at(ang + .2, 17); herd('boar', 1, p.x, p.y, 1.5);
+    p = at(ang - .5, 15); herd('deer', 4, p.x, p.y, 3);
+  });
+  for (let k = 0; k < 6; k++) { let cx, cy, tries = 0; do { cx = 6 + R() * (W - 12); cy = 6 + R() * (H - 12); tries++; } while ((nearBase(cx, cy, 18) || G.blk[Math.floor(cy) * W + Math.floor(cx)]) && tries < 40); herd(k % 3 === 2 ? 'boar' : 'deer', k % 3 === 2 ? 2 : 5, cx, cy, 3.5); }
   // conectividad
   const seen = new Uint8Array(W * H), q = [Math.floor(cs[0].y) * W + Math.floor(cs[0].x)];
   seen[q[0]] = 1;
@@ -172,13 +183,21 @@ function killEntity(e) {
     G.fx.push({ type: 'boom', x: e.x + e.w / 2, y: e.y + e.h / 2, t: 0, dur: 1.2, r: e.w });
     if (e.owner === 0) notify('¡Has perdido: ' + BUILDINGS[e.type].name + '!', 'danger');
     checkEnd();
+  } else if (e.kind === 'animal') {
+    addCarcass(e);
+    G.fx.push({ type: 'blood', x: e.x, y: e.y, t: 0, dur: 5 });
+    for (let i = 0; i < 6; i++) G.fx.push({ type: 'dust', x: e.x + (Math.random() - .5) * .6, y: e.y + (Math.random() - .5) * .6, t: 0, dur: .8 });
   } else {
-    G.occ[e.y * W + e.x] = 0; G.blk[e.y * W + e.x] = 0; G.pv++;
+    if (!e.noblock) { G.occ[e.y * W + e.x] = 0; G.blk[e.y * W + e.x] = 0; G.pv++; }
+    if (e.type === 'tree') {
+      G.fx.push({ type: 'fell', x: e.x + .5, y: e.y + .5, v: e.v, dir: Math.random() < .5 ? 1 : -1, t: 0, dur: 1.3 });
+      for (let i = 0; i < 10; i++) chip(e.x + .5, e.y + .5, 36 + Math.random() * 20, ['#2f8434', '#58b24a', '#7ccb5a', '#8a5a2a'][i % 4], 'leaf');
+    }
   }
 }
 function cleanup() {
   if (!G.dirty) return;
-  G.units = G.units.filter(e => !e.dead); G.buildings = G.buildings.filter(e => !e.dead); G.nodes = G.nodes.filter(e => !e.dead);
+  G.animals = G.animals.filter(e => !e.dead); G.units = G.units.filter(e => !e.dead); G.buildings = G.buildings.filter(e => !e.dead); G.nodes = G.nodes.filter(e => !e.dead);
   G.dirty = false;
 }
 function checkEnd() {
@@ -209,6 +228,71 @@ function nearestFree(x, y) {
     if (best) return best;
   }
   return { x, y };
+}
+
+/* ---------- Fauna ---------- */
+function addAnimal(type, x, y) {
+  const D = ANIMALS[type];
+  const a = { id: G.nextId++, kind: 'animal', type, owner: -1, x, y, hx: x, hy: y, dir: Math.random() * 6.28, hp: D.hp, maxhp: D.hp, st: 'graze', t: Math.random() * 3, tx: x, ty: y, flash: 0, anim: Math.random() * 10, swing: 0, cool: 0, target: null, fleeT: 0, fightT: 0, male: Math.random() < .6 };
+  G.animals.push(a); G.byId.set(a.id, a); return a;
+}
+function addCarcass(a) {
+  const D = ANIMALS[a.type], tx = Math.max(0, Math.min(W - 1, Math.floor(a.x))), ty = Math.max(0, Math.min(H - 1, Math.floor(a.y)));
+  const n = { id: G.nextId++, kind: 'node', type: 'carcass', animal: a.type, owner: -1, x: tx, y: ty, fx: a.x, fy: a.y, w: 1, h: 1, res: 'food', amount: D.food, max: D.food, v: 0, dir: a.dir, noblock: true, male: a.male };
+  G.nodes.push(n); G.byId.set(n.id, n); return n;
+}
+function chip(x, y, h0, col, shape) { // partícula con física (astillas, chispas, hojas)
+  if (G.fx.length > 260) return;
+  const ang = Math.random() * 6.28, sp = 25 + Math.random() * 45;
+  G.fx.push({ type: 'chip', x, y, h0, vx: Math.cos(ang) * sp, vz: 30 + Math.random() * 55, rot: (Math.random() - .5) * 3, col, shape: shape || 'chip', s: 1.5 + Math.random() * 1.6, t: 0, dur: .6 + Math.random() * .45 });
+}
+function steerTo(a, tx, ty, speed, dt) {
+  const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy);
+  if (d < 0.2) return true;
+  const want = Math.atan2(dy, dx); let diff = ((want - a.dir + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+  a.dir += Math.max(-1, Math.min(1, diff)) * Math.min(1, dt * 9);
+  for (const off of [0, .7, -.7, 1.4, -1.4]) {
+    const nx = a.x + Math.cos(a.dir + off) * speed * dt, ny = a.y + Math.sin(a.dir + off) * speed * dt;
+    if (!isBlk(nx, ny) && nx > .5 && ny > .5 && nx < W - .5 && ny < H - .5) { a.x = nx; a.y = ny; a.dir += off * .35; a.stuck = 0; return false; }
+  }
+  a.stuck = (a.stuck || 0) + 1; return a.stuck > 8;
+}
+function startFlee(a, from) {
+  const dx = a.x - from.x, dy = a.y - from.y, d = Math.hypot(dx, dy) || 1, f = nearestFree(Math.max(2, Math.min(W - 2, a.x + dx / d * 9 + (Math.random() - .5) * 4)), Math.max(2, Math.min(H - 2, a.y + dy / d * 9 + (Math.random() - .5) * 4)));
+  a.st = 'flee'; a.tx = f.x; a.ty = f.y; a.fleeT = 4 + Math.random() * 2;
+}
+function animalHit(a, att) {
+  const D = ANIMALS[a.type];
+  if (D.fights && att && att.kind === 'unit') { a.st = 'fight'; a.target = att; a.fightT = 12; }
+  else if (att) startFlee(a, att);
+  for (const o of G.animals) if (o !== a && !o.dead && o.type === a.type && Math.hypot(o.x - a.x, o.y - a.y) < 7 && att && !ANIMALS[o.type].fights) startFlee(o, att);
+}
+function updateAnimal(a, dt) {
+  const D = ANIMALS[a.type]; a.anim += dt; a.flash = Math.max(0, a.flash - dt); a.cool = Math.max(0, a.cool - dt); a.swing = Math.max(0, a.swing - dt);
+  a.run = false;
+  if (a.st === 'fight') {
+    const t = a.target;
+    if (!alive(t) || Math.hypot(t.x - a.x, t.y - a.y) > 13 || (a.fightT -= dt) <= 0) { a.st = 'graze'; a.t = 2; a.target = null; }
+    else {
+      const d = Math.hypot(t.x - a.x, t.y - a.y) - .3; a.run = true;
+      if (d <= 1) { a.dir = Math.atan2(t.y - a.y, t.x - a.x); if (a.cool <= 0) { a.cool = 1.3; a.swing = .35; dealDamage(a, t, D.atk); } } else steerTo(a, t.x, t.y, D.run, dt);
+      return;
+    }
+  }
+  if (a.st === 'flee') {
+    a.run = true;
+    if ((a.fleeT -= dt) <= 0) { a.st = 'graze'; a.t = 2 + Math.random() * 3; }
+    else { if (steerTo(a, a.tx, a.ty, D.run, dt)) a.fleeT = 0; if (Math.random() < dt * 6 && G.fx.length < 220) G.fx.push({ type: 'dust', x: a.x, y: a.y, t: 0, dur: .5 }); return; }
+  }
+  if (D.skittish) for (const u of G.units) if (!u.dead && Math.hypot(u.x - a.x, u.y - a.y) < D.skittish) { startFlee(a, u); a.run = true; return; }
+  if (a.st === 'graze') {
+    if ((a.t -= dt) <= 0) {
+      const ang = Math.random() * 6.28, r = 1.5 + Math.random() * 4.5, f = nearestFree(Math.max(2, Math.min(W - 2, a.hx + Math.cos(ang) * r)), Math.max(2, Math.min(H - 2, a.hy + Math.sin(ang) * r)));
+      a.tx = f.x; a.ty = f.y; a.st = 'walk'; a.walkT = 7;
+    }
+  } else if (a.st === 'walk') {
+    if (steerTo(a, a.tx, a.ty, D.walk, dt) || (a.walkT -= dt) <= 0) { a.st = 'graze'; a.t = 2 + Math.random() * 5; }
+  }
 }
 
 /* ---------- Economía ---------- */
@@ -355,7 +439,7 @@ function findPath(sx, sy, goal, partial) {
   return out;
 }
 function goalFor(e, reach) {
-  const unit = e.kind === 'unit';
+  const unit = isPt(e);
   return { x: unit ? e.x : e.x, y: e.y, w: unit ? 0 : e.w, h: unit ? 0 : e.h, reach };
 }
 function pathTo(u, goal, partial) {
@@ -402,16 +486,17 @@ function dealDamage(att, t, dmg) {
   if (G.fx.length < 200) G.fx.push({ type: 'spark', x: c.x + (Math.random() - .5) * .4, y: c.y + (Math.random() - .5) * .4, t: 0, dur: 0.3 });
   if (t.owner === 0 && att && att.owner !== 0) alertAttack(t);
   if (t.hp <= 0) { killEntity(t); return; }
+  if (t.kind === 'animal') { animalHit(t, att); return; }
   if (t.kind === 'unit' && !t.order && att && alive(att) && att.kind === 'unit') {
     const D = UNITS[t.type];
     if (D.cls !== 'vil' && !D.bldOnly) setOrder(t, { type: 'attack', target: att, auto: true });
   }
 }
 function attackOnce(u, t) {
-  const D = UNITS[u.type], dmg = calcDmg(u, t);
-  if (D.range > 0) {
+  const D = UNITS[u.type], hunting = u.type === 'villager' && t.kind === 'animal', dmg = hunting ? 10 : calcDmg(u, t);
+  if (D.range > 0 || hunting) {
     const c = center(t);
-    G.proj.push({ sx: u.x, sy: u.y, x: u.x, y: u.y, target: t, last: c, dmg, att: u, t: 0, dur: Math.max(0.15, distEnt(u, t) / 14) });
+    G.proj.push({ sx: u.x, sy: u.y, x: u.x, y: u.y, target: t, last: c, dmg, att: u, spear: hunting, t: 0, dur: Math.max(0.15, distEnt(u, t) / (hunting ? 11 : 14)) });
   } else dealDamage(u, t, dmg);
 }
 function updateProj(dt) {
@@ -443,17 +528,17 @@ function acquire(u, range) {
   return best;
 }
 function chase(u, t, dt, auto) {
-  const D = UNITS[u.type], reach = D.range > 0 ? D.range : 0.95, d = distEnt(u, t);
+  const D = UNITS[u.type], hunting = u.type === 'villager' && t.kind === 'animal', rng = hunting ? 3.6 : D.range, reach = rng > 0 ? rng : 0.95, d = distEnt(u, t);
   if (d <= reach) {
     u.path = null;
     const c = center(t); u.dir = Math.atan2(c.y - u.y, c.x - u.x);
-    if (u.cool <= 0) { attackOnce(u, t); u.cool = D.rate; u.swing = 0.25; }
+    if (u.cool <= 0) { attackOnce(u, t); u.cool = hunting ? 1.9 : D.rate; u.swing = 0.25; }
     return true;
   }
   if (auto && d > D.sight + 3) return false;
-  const moved = t.kind === 'unit' && Math.hypot(t.x - (u.tx || 0), t.y - (u.ty || 0)) > 1.3;
+  const moved = isPt(t) && Math.hypot(t.x - (u.tx || 0), t.y - (u.ty || 0)) > 1.3;
   if (!u.path || (moved && u.pathT > 0.5)) {
-    const rg = D.range > 0 ? Math.max(0.8, D.range - 0.7) : 0.8;
+    const rg = rng > 0 ? Math.max(0.8, rng - 0.7) : 0.8;
     if (!pathTo(u, goalFor(t, rg))) return false;
     u.tx = t.x; u.ty = t.y;
   }
@@ -483,7 +568,7 @@ function issueMove(list, x, y, amove) {
 function issueAttack(list, t) {
   for (const u of list) {
     if (u.kind !== 'unit' || u.dead) continue;
-    if (UNITS[u.type].bldOnly && t.kind === 'unit') { issueMove([u], t.x, t.y); continue; }
+    if (UNITS[u.type].bldOnly && isPt(t)) { issueMove([u], t.x, t.y); continue; }
     setOrder(u, { type: 'attack', target: t });
   }
 }
@@ -578,7 +663,10 @@ function updateUnit(u, dt) {
     }
     case 'attack': {
       const t = o.target;
-      if (!alive(t)) { u.order = null; u.path = null; break; }
+      if (!alive(t)) {
+        if (u.type === 'villager' && t.kind === 'animal') { let c = null, bd = 4; for (const n of G.nodes) if (!n.dead && n.type === 'carcass') { const d = Math.hypot(n.fx - t.x, n.fy - t.y); if (d < bd) { bd = d; c = n; } } if (c) { issueGather([u], c); break; } }
+        u.order = null; u.path = null; break;
+      }
       if (!chase(u, t, dt, o.auto)) { u.order = null; u.path = null; }
       break;
     }
@@ -604,6 +692,7 @@ function updateUnit(u, dt) {
       if (b.done) { afterBuild(u, b); break; }
       if (distEnt(u, b) <= 1.0) {
         u.path = null; b.bn++; u.dir = Math.atan2(b.y + b.h / 2 - u.y, b.x + b.w / 2 - u.x);
+        if (crossed(u.anim, dt, 1.0, .72)) { const fx = u.x + Math.cos(u.dir) * .7, fy = u.y + Math.sin(u.dir) * .7; for (let i = 0; i < 4; i++) chip(fx, fy, 14, ['#d8b27a', '#c8c0b0', '#8a6a3a'][i % 3], 'chip'); G.fx.push({ type: 'dust', x: fx, y: fy, t: 0, dur: .5 }); sfxAt('hammer', u.x, u.y); }
       } else {
         if (!u.path && !pathTo(u, goalFor(b, 0.8))) { u.order = null; break; }
         if (stepAlong(u, dt) === 'blocked' && ++u.retry > 6) u.order = null;
@@ -611,6 +700,25 @@ function updateUnit(u, dt) {
       break;
     }
     case 'gather': updateGather(u, o, dt); break;
+  }
+}
+function crossed(anim, dt, T, at) { const a = (((anim - dt) / T) % 1 + 1) % 1, b = (anim / T) % 1; return (a < at && b >= at) || (b < a && (a < at || b >= at)); }
+function onStrike(u, n) {
+  const x = n.fx != null ? n.fx : n.x + .5, y = n.fy != null ? n.fy : n.y + .5;
+  if (n.type === 'tree') {
+    n.shake = .34; for (let i = 0; i < 6; i++) chip(x, y, 20 + Math.random() * 16, ['#d8b27a', '#b08a58', '#ecd0a0'][i % 3], 'chip');
+    if (Math.random() < .6) chip(x, y, 54, ['#58b24a', '#7ccb5a', '#2f8434'][Math.floor(Math.random() * 3)], 'leaf');
+    sfxAt('chop', u.x, u.y);
+  } else if (n.type === 'gold' || n.type === 'stone') {
+    n.shake = .26; for (let i = 0; i < 5; i++) chip(x, y, 14 + Math.random() * 10, i % 2 ? '#ffe48a' : '#9aa0a6', i % 2 ? 'spark' : 'chip');
+    if (n.type === 'gold') chip(x, y, 16, '#ffd23a', 'chip');
+    sfxAt('mine', u.x, u.y);
+  } else if (n.type === 'berry') {
+    n.shake = .4; for (let i = 0; i < 3; i++) chip(x, y, 14 + Math.random() * 10, i === 0 ? '#e8284a' : '#58b24a', i === 0 ? 'chip' : 'leaf');
+  } else if (n.type === 'carcass') {
+    for (let i = 0; i < 2; i++) chip(x, y, 8, '#b02a2a', 'chip');
+  } else if (n.kind === 'building') { // granja
+    for (let i = 0; i < 3; i++) chip(u.x, u.y, 16, '#e0c048', 'leaf');
   }
 }
 function updateGather(u, o, dt) {
@@ -635,6 +743,8 @@ function updateGather(u, o, dt) {
     const isFarm = n.kind === 'building';
     const rate = (isFarm ? FARM_RATE : NODE[n.type].rate) * gatherMul(u.owner);
     const amt = isFarm ? n.food : n.amount;
+    const T = isFarm ? 2.2 : n.type === 'tree' ? .95 : (n.type === 'berry' || n.type === 'carcass') ? 1.8 : 1.1, at = (n.type === 'tree' || n.type === 'gold' || n.type === 'stone') ? .72 : .5;
+    if (crossed(u.anim, dt, T, at)) onStrike(u, n);
     const take = Math.min(rate * dt, amt, CARRY - u.carry);
     u.carry += take;
     if (isFarm) { n.food -= take; if (n.food <= 0.01) killEntityQuiet(n); }
@@ -752,6 +862,8 @@ function update(dt) {
   for (const p of G.players) if (p.ai) aiUpdate(p, dt);
   for (const b of G.buildings) if (!b.dead) updateBuilding(b, dt);
   for (const u of G.units) if (!u.dead) updateUnit(u, dt);
+  for (const a of G.animals) if (!a.dead) updateAnimal(a, dt);
+  for (const n of G.nodes) if (n.shake > 0) n.shake = Math.max(0, n.shake - dt);
   separate(dt);
   updateProj(dt);
   for (const f of G.fx) f.t += dt;
